@@ -127,16 +127,20 @@ async function run() {
   }
   await HotelPrice.insertMany(rows);
 
-  await Lead.insertMany([
-    { name: 'Ananya Sharma', email: 'ananya@example.com', phone: '+91 98110 22334', hotelId: H[0]._id, hotelName: H[0].name,
-      checkIn: d('2026-11-12'), checkOut: d('2026-11-15'), rooms: 1, adults: 2, children: 1, roomType: 'Premium', mealPlan: 'CP',
-      message: 'Looking for a sea-facing room.', status: 'New' },
-    { name: 'Rahul Verma', email: 'rahul.v@example.com', phone: '+91 99300 55667', hotelId: H[1]._id, hotelName: H[1].name,
-      checkIn: d('2026-10-05'), checkOut: d('2026-10-09'), rooms: 2, adults: 4, children: 0, roomType: 'Suite', mealPlan: 'MAP',
-      message: 'Family trip, need connecting rooms.', status: 'Contacted' },
-  ]);
+  // Demo enquiries are opt-in so a live database is not polluted with fake leads.
+  if (process.env.SEED_LEADS === '1') {
+    await Lead.insertMany([
+      { name: 'Ananya Sharma', email: 'ananya@example.com', phone: '+91 98110 22334', hotelId: H[0]._id, hotelName: H[0].name,
+        checkIn: d('2026-11-12'), checkOut: d('2026-11-15'), rooms: 1, adults: 2, children: 1, roomType: 'Premium', mealPlan: 'CP',
+        message: 'Looking for a sea-facing room.', status: 'New' },
+      { name: 'Rahul Verma', email: 'rahul.v@example.com', phone: '+91 99300 55667', hotelId: H[1]._id, hotelName: H[1].name,
+        checkIn: d('2026-10-05'), checkOut: d('2026-10-09'), rooms: 2, adults: 4, children: 0, roomType: 'Suite', mealPlan: 'MAP',
+        message: 'Family trip, need connecting rooms.', status: 'Contacted' },
+    ]);
+  }
 
   console.log(`Seeded ${H.length} hotels, ${rows.length} prices, ${rts.length} room types, ${mps.length} meal plans.`);
+  console.log(process.env.SEED_LEADS === '1' ? 'Demo leads inserted.' : 'Demo leads skipped (set SEED_LEADS=1 to include them).');
   await mongoose.disconnect();
 }
 run().catch((e) => { console.error(e); process.exit(1); });
