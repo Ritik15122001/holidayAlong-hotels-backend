@@ -94,6 +94,60 @@ r.put('/prices/:id', ok(async (req, res) => {
 }));
 r.delete('/prices/:id', ok(async (req, res) => { await HotelPrice.findByIdAndDelete(req.params.id); res.json({ ok: true }); }));
 
+// Bulk price import. Rows come from a spreadsheet, so every row is validated
+// individually and failures are reported back with their row number.
+r.post('/hotels/:id/prices/bulk', ok(async (req, res) => {
+  const hotel = await Hotel.findById(req.params.id).select('name').lean();
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'The sheet has no rows' });
+
+  const [roomTypes, mealPlans] = await Promise.all([RoomType.find().lean(), MealPlan.find().lean()]);
+  const rtByName = new Map(roomTypes.map((r) => [String(r.name).trim().toLowerCase(), r._id]));
+  const mpByCode = new Map(mealPlans.map((m) => [String(m.code).trim().toLowerCase(), m._id]));
+  const mpByName = new Map(mealPlans.map((m) => [String(m.name).trim().toLowerCase(), m._id]));
+
+  const num = (v) => { const n = Number(String(v ?? '').toString().replace(/[^0-9.-]/g, '')); return Number.isFinite(n) ? n : 0; };
+  const date = (v) => { const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d; };
+
+  let created = 0, updated = 0;
+  const errors = [];
+
+  for (const [i, row] of rows.entries()) {
+    const line = i + 2; // sheet row, allowing for the header
+    const rtKey = String(row.roomType ?? '').trim().toLowerCase();
+    const mpKey = String(row.mealPlan ?? '').trim().toLowerCase();
+    const roomTypeId = rtByName.get(rtKey);
+    const mealPlanId = mpByCode.get(mpKey) || mpByName.get(mpKey);
+
+    if (!roomTypeId) { errors.push(`Row ${line}: unknown room type “${row.roomType ?? ''}”`); continue; }
+    if (!mealPlanId) { errors.push(`Row ${line}: unknown meal plan “${row.mealPlan ?? ''}”`); continue; }
+
+    const startDate = date(row.startDate), endDate = date(row.endDate);
+    if (!startDate || !endDate) { errors.push(`Row ${line}: start and end dates are required (YYYY-MM-DD)`); continue; }
+    if (endDate < startDate) { errors.push(`Row ${line}: end date is before the start date`); continue; }
+
+    const doc = {
+      hotelId: hotel._id, roomTypeId, mealPlanId,
+      singlePrice: num(row.singlePrice), doublePrice: num(row.doublePrice),
+      triplePrice: num(row.triplePrice), quadPrice: num(row.quadPrice),
+      cnbPrice: num(row.cnbPrice), cwbPrice: num(row.cwbPrice),
+      adultExtraBedPrice: num(row.adultExtraBedPrice),
+      currency: String(row.currency || 'INR').trim().toUpperCase(),
+      startDate, endDate,
+      status: String(row.status || 'Active').trim().toLowerCase() === 'inactive' ? 'Inactive' : 'Active',
+    };
+
+    // same room type + meal plan + validity window = an update, not a duplicate
+    const existing = await HotelPrice.findOne({ hotelId: hotel._id, roomTypeId, mealPlanId, startDate, endDate });
+    if (existing) { Object.assign(existing, doc); await existing.save(); updated += 1; }
+    else { await HotelPrice.create(doc); created += 1; }
+  }
+
+  res.json({ created, updated, failed: errors.length, errors: errors.slice(0, 20) });
+}));
+
 // Masters CRUD factory
 const crud = (Model, path, opts = {}) => {
   r.get(`/${path}`, ok(async (_q, res) => {
