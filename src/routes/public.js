@@ -96,13 +96,15 @@ r.get('/destinations', requireUser, ok(async (_req, res) => {
 r.post('/leads', requireUser, ok(async (req, res) => {
   const b = req.body || {};
   if (!b.name || !b.email || !b.phone) return res.status(400).json({ error: 'Name, email and phone are required' });
+  if (!b.checkIn || !b.checkOut) return res.status(400).json({ error: 'Check-in and check-out dates are required' });
+  if (new Date(b.checkOut) <= new Date(b.checkIn)) return res.status(400).json({ error: 'Check-out must be after check-in' });
   if (b.hotelId && !String(b.hotelId).match(/^[0-9a-f]{24}$/i)) delete b.hotelId;
   if (b.hotelId) {
     const h = await Hotel.findById(b.hotelId).select('name').lean();
     if (h) b.hotelName = h.name;
   }
   const lead = await Lead.create(b);
-  res.status(201).json({ id: lead._id, message: 'Thank you. Our team will contact you shortly.' });
+  res.status(201).json({ id: lead._id, message: 'Thank you. Our team will confirm your booking shortly.' });
 }));
 
 export default r;
