@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
@@ -7,6 +6,28 @@ import adminRoutes, { auth } from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import uploadRoutes from './routes/uploads.js';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+// Resolve .env next to package.json rather than from process.cwd(), so it is
+// found however the process is launched (pm2, systemd, a different cwd).
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+dotenv.config({ path: path.join(ROOT, '.env') });
+
+const REQUIRED = ['MONGO_URI', 'ADMIN_USER', 'ADMIN_PASS'];
+const missing = REQUIRED.filter((k) => !process.env[k]);
+if (missing.length) {
+  console.error(
+    `\nMissing required environment variable${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}\n` +
+    `Looked for a .env file at ${path.join(ROOT, '.env')}\n` +
+    `Copy .env.example to .env and fill it in, or set these in your process manager.\n`
+  );
+  process.exit(1);
+}
+if (!process.env.USER_JWT_SECRET) {
+  console.warn('USER_JWT_SECRET is not set — falling back to a default. Set it, or customer logins break on restart.');
+}
+
 
 process.env.ADMIN_TOKEN ||= 'hotel-admin-token';
 
@@ -17,7 +38,7 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // Uploaded images are served straight off disk.
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), { maxAge: '30d' }));
+app.use('/uploads', express.static(path.join(ROOT, 'uploads'), { maxAge: '30d' }));
 app.use('/api/auth', authRoutes);
 app.use('/api', publicRoutes);
 app.use('/api/admin/uploads', auth, uploadRoutes);

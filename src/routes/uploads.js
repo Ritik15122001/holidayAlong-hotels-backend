@@ -3,8 +3,10 @@ import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
-const DIR = path.resolve(process.cwd(), 'uploads');
+// Same root as index.js, so uploads land next to package.json regardless of cwd.
+const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', 'uploads');
 fs.mkdirSync(DIR, { recursive: true });
 
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
