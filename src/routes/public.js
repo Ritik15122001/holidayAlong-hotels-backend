@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Hotel, HotelPrice, RoomType, MealPlan, Lead } from '../models/index.js';
+import { Hotel, HotelPrice, RoomType, MealPlan, Lead, City, Location, Vendor, Brochure } from '../models/index.js';
 import { requireUser } from '../lib/auth.js';
 
 const r = Router();
@@ -82,6 +82,38 @@ r.get('/hotels/:id/prices', requireUser, ok(async (req, res) => {
 
 r.get('/room-types', requireUser, ok(async (_req, res) => res.json(await RoomType.find({ status: 'Active' }).sort('name').lean())));
 r.get('/meal-plans', requireUser, ok(async (_req, res) => res.json(await MealPlan.find({ status: 'Active' }).sort('code').lean())));
+
+r.get('/cities', requireUser, ok(async (_req, res) =>
+  res.json(await City.find({ status: 'Active' }).sort('name').lean())));
+
+r.get('/locations', requireUser, ok(async (req, res) => {
+  const filter = { status: 'Active' };
+  if (req.query.city) filter.cityId = req.query.city;
+  res.json(await Location.find(filter).populate('cityId', 'name state').sort('name').lean());
+}));
+
+// Public vendor directory. Bank, GST/PAN and UPI details are deliberately
+// excluded — those are admin-only.
+r.get('/vendors', requireUser, ok(async (req, res) => {
+  const filter = { status: 'Active' };
+  if (req.query.type) filter.vendorType = req.query.type;
+  const rows = await Vendor.find(filter)
+    .select('companyName contactPerson phones emails website vendorType sectors')
+    .sort('companyName').lean();
+  const counts = await Hotel.aggregate([
+    { $match: { status: 'Active', vendorId: { $ne: null } } },
+    { $group: { _id: '$vendorId', count: { $sum: 1 } } },
+  ]);
+  const byVendor = Object.fromEntries(counts.map((c) => [String(c._id), c.count]));
+  res.json(rows.map((v) => ({ ...v, hotelCount: byVendor[String(v._id)] || 0 })));
+}));
+
+r.get('/vendors/:id/hotels', requireUser, ok(async (req, res) =>
+  res.json(await Hotel.find({ vendorId: req.params.id, status: 'Active' })
+    .select('name slug city location starCategory images rating').sort('name').lean())));
+
+r.get('/brochures', requireUser, ok(async (_req, res) =>
+  res.json(await Brochure.find({ status: 'Active' }).sort({ sortOrder: 1, createdAt: -1 }).lean())));
 
 r.get('/destinations', requireUser, ok(async (_req, res) => {
   const rows = await Hotel.aggregate([

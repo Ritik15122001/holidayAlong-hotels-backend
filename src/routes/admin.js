@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User } from '../models/index.js';
+import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure } from '../models/index.js';
 import { hashPassword } from '../lib/auth.js';
 
 const r = Router();
@@ -95,14 +95,21 @@ r.put('/prices/:id', ok(async (req, res) => {
 r.delete('/prices/:id', ok(async (req, res) => { await HotelPrice.findByIdAndDelete(req.params.id); res.json({ ok: true }); }));
 
 // Masters CRUD factory
-const crud = (Model, path) => {
-  r.get(`/${path}`, ok(async (_q, res) => res.json(await Model.find().sort({ createdAt: 1 }).lean())));
+const crud = (Model, path, opts = {}) => {
+  r.get(`/${path}`, ok(async (_q, res) => {
+    let q = Model.find().sort(opts.sort || { createdAt: 1 });
+    if (opts.populate) q = q.populate(opts.populate);
+    res.json(await q.lean());
+  }));
   r.post(`/${path}`, ok(async (req, res) => res.status(201).json(await Model.create(req.body))));
   r.put(`/${path}/:id`, ok(async (req, res) => res.json(await Model.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }))));
   r.delete(`/${path}/:id`, ok(async (req, res) => { await Model.findByIdAndDelete(req.params.id); res.json({ ok: true }); }));
 };
 crud(RoomType, 'room-types');
 crud(MealPlan, 'meal-plans');
+crud(City, 'cities', { sort: { name: 1 } });
+crud(Brochure, 'brochures', { sort: { sortOrder: 1, createdAt: -1 } });
+crud(Location, 'locations', { sort: { name: 1 }, populate: { path: 'cityId', select: 'name state' } });
 
 // Leads
 r.get('/leads', ok(async (req, res) => {
@@ -119,6 +126,38 @@ r.get('/leads', ok(async (req, res) => {
 }));
 r.put('/leads/:id/status', ok(async (req, res) => res.json(await Lead.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true }))));
 r.delete('/leads/:id', ok(async (req, res) => { await Lead.findByIdAndDelete(req.params.id); res.json({ ok: true }); }));
+
+// Vendors
+r.get('/vendors', ok(async (req, res) => {
+  const { q, type, status, page = 1, limit = 12 } = req.query;
+  const filter = {};
+  if (status) filter.status = status;
+  if (type) filter.vendorType = type;
+  if (q) filter.$or = [{ companyName: new RegExp(q, 'i') }, { contactPerson: new RegExp(q, 'i') }, { sectors: new RegExp(q, 'i') }];
+  const p = Math.max(1, Number(page)), l = Math.max(1, Number(limit));
+  const [rows, total] = await Promise.all([
+    Vendor.find(filter).sort({ createdAt: -1 }).skip((p - 1) * l).limit(l).lean(),
+    Vendor.countDocuments(filter),
+  ]);
+  const counts = await Hotel.aggregate([
+    { $match: { vendorId: { $in: rows.map((v) => v._id) } } },
+    { $group: { _id: '$vendorId', count: { $sum: 1 } } },
+  ]);
+  const byVendor = Object.fromEntries(counts.map((c) => [String(c._id), c.count]));
+  res.json({ data: rows.map((v) => ({ ...v, hotelCount: byVendor[String(v._id)] || 0 })), total, page: p, pages: Math.ceil(total / l) || 1 });
+}));
+
+r.get('/vendors/:id/hotels', ok(async (req, res) =>
+  res.json(await Hotel.find({ vendorId: req.params.id }).select('name city location starCategory status').sort('name').lean())));
+
+r.post('/vendors', ok(async (req, res) => res.status(201).json(await Vendor.create(req.body))));
+r.put('/vendors/:id', ok(async (req, res) => res.json(await Vendor.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }))));
+r.delete('/vendors/:id', ok(async (req, res) => {
+  const hotels = await Hotel.countDocuments({ vendorId: req.params.id });
+  if (hotels) return res.status(400).json({ error: `This vendor still has ${hotels} hotel${hotels > 1 ? 's' : ''} linked. Reassign them first.` });
+  await Vendor.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
+}));
 
 // Registered users
 r.get('/users', ok(async (req, res) => {

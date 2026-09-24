@@ -18,6 +18,7 @@ const hotelSchema = new Schema({
   rating: { type: Number, default: 4.5 },
   checkIn: { type: String, default: '14:00' },
   checkOut: { type: String, default: '11:00' },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', index: true },
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
 }, { timestamps: true });
 
@@ -97,6 +98,54 @@ const userSchema = new Schema({
   lastLoginAt: { type: Date },
 }, { timestamps: true });
 
+const citySchema = new Schema({
+  name: { type: String, required: true, trim: true, index: true },
+  state: { type: String, default: '', trim: true },
+  country: { type: String, default: 'India', trim: true },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+citySchema.index({ name: 1, state: 1 }, { unique: true });
+
+const locationSchema = new Schema({
+  name: { type: String, required: true, trim: true },
+  cityId: { type: Schema.Types.ObjectId, ref: 'City', required: true, index: true },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+locationSchema.index({ name: 1, cityId: 1 }, { unique: true });
+
+const vendorSchema = new Schema({
+  companyName: { type: String, required: true, trim: true, index: true },
+  contactPerson: { type: String, default: '', trim: true },
+  phones: { type: [String], default: [] },
+  emails: { type: [String], default: [] },
+  website: { type: String, default: '', trim: true },
+  vendorType: {
+    type: String,
+    enum: ['Cab', 'Hotel', 'Flight', 'Bus', 'Activities', 'Cruises', 'Visa', 'Insurance'],
+    required: true, index: true,
+  },
+  sectors: { type: [String], default: [] },   // e.g. ['Delhi', 'Rajasthan']
+  // Finance details — admin only, never exposed on the public site.
+  gstPan: { type: String, default: '', trim: true },
+  accountNumber: { type: String, default: '', trim: true },
+  bankName: { type: String, default: '', trim: true },
+  ifsc: { type: String, default: '', trim: true, uppercase: true },
+  upi: { type: String, default: '', trim: true },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+
+const brochureSchema = new Schema({
+  title: { type: String, required: true, trim: true },
+  region: { type: String, default: '', trim: true },
+  fileUrl: { type: String, required: true, trim: true },   // link to the PDF
+  sortOrder: { type: Number, default: 0 },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+
+export const Brochure = model('Brochure', brochureSchema);
+export const Vendor = model('Vendor', vendorSchema);
+export const City = model('City', citySchema);
+export const Location = model('Location', locationSchema);
 export const User = model('User', userSchema);
 export const Hotel = model('Hotel', hotelSchema);
 export const RoomType = model('RoomType', roomTypeSchema);
