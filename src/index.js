@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import publicRoutes from './routes/public.js';
 import adminRoutes, { auth } from './routes/admin.js';
 import authRoutes from './routes/auth.js';
+import uploadRoutes from './routes/uploads.js';
+import path from 'node:path';
 
 process.env.ADMIN_TOKEN ||= 'hotel-admin-token';
 
@@ -13,8 +15,12 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// Uploaded images are served straight off disk.
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), { maxAge: '30d' }));
 app.use('/api/auth', authRoutes);
 app.use('/api', publicRoutes);
+app.use('/api/admin/uploads', auth, uploadRoutes);
 app.use('/api/admin', auth, adminRoutes);
 app.use((err, _req, res, _next) => res.status(500).json({ error: err.message }));
 

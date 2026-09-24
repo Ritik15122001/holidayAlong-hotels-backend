@@ -6,3 +6,6 @@ dist
 .env
 .env.local
 .env.*.local
+
+# uploaded images
+uploads/
