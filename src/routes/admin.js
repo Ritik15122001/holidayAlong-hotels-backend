@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure } from '../models/index.js';
+import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure, Format } from '../models/index.js';
 import { hashPassword } from '../lib/auth.js';
 
 const r = Router();
@@ -163,6 +163,7 @@ crud(RoomType, 'room-types');
 crud(MealPlan, 'meal-plans');
 crud(City, 'cities', { sort: { name: 1 } });
 crud(Brochure, 'brochures', { sort: { sortOrder: 1, createdAt: -1 } });
+crud(Format, 'formats', { sort: { sortOrder: 1, createdAt: 1 } });
 crud(Location, 'locations', { sort: { name: 1 }, populate: { path: 'cityId', select: 'name state' } });
 
 // Leads

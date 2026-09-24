@@ -142,6 +142,15 @@ const brochureSchema = new Schema({
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
 }, { timestamps: true });
 
+const formatSchema = new Schema({
+  title: { type: String, required: true, trim: true },
+  group: { type: String, default: 'General', trim: true },
+  body: { type: String, required: true },
+  sortOrder: { type: Number, default: 0 },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+
+export const Format = model('Format', formatSchema);
 export const Brochure = model('Brochure', brochureSchema);
 export const Vendor = model('Vendor', vendorSchema);
 export const City = model('City', citySchema);

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Hotel, HotelPrice, RoomType, MealPlan, Lead, City, Location, Vendor, Brochure } from '../models/index.js';
+import { Hotel, HotelPrice, RoomType, MealPlan, Lead, City, Location, Vendor, Brochure, Format } from '../models/index.js';
 import { requireUser } from '../lib/auth.js';
 
 const r = Router();
@@ -111,6 +111,9 @@ r.get('/vendors', requireUser, ok(async (req, res) => {
 r.get('/vendors/:id/hotels', requireUser, ok(async (req, res) =>
   res.json(await Hotel.find({ vendorId: req.params.id, status: 'Active' })
     .select('name slug city location starCategory images rating').sort('name').lean())));
+
+r.get('/formats', requireUser, ok(async (_req, res) =>
+  res.json(await Format.find({ status: 'Active' }).sort({ sortOrder: 1, createdAt: 1 }).lean())));
 
 r.get('/brochures', requireUser, ok(async (_req, res) =>
   res.json(await Brochure.find({ status: 'Active' }).sort({ sortOrder: 1, createdAt: -1 }).lean())));
