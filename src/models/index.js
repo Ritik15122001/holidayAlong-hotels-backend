@@ -150,6 +150,14 @@ const formatSchema = new Schema({
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
 }, { timestamps: true });
 
+const amenitySchema = new Schema({
+  name: { type: String, required: true, trim: true, unique: true },
+  icon: { type: String, default: 'ConciergeBell', trim: true },   // lucide icon name
+  sortOrder: { type: Number, default: 0 },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+
+export const Amenity = model('Amenity', amenitySchema);
 export const Format = model('Format', formatSchema);
 export const Brochure = model('Brochure', brochureSchema);
 export const Vendor = model('Vendor', vendorSchema);
