@@ -6,7 +6,7 @@ const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
 
 // GET /api/hotels
-r.get('/hotels', ok(async (req, res) => {
+r.get('/hotels', requireUser, ok(async (req, res) => {
   const { q, city, stars, minPrice, maxPrice, rating, roomType, mealPlan, page = 1, limit = 12, sort } = req.query;
   const filter = { status: 'Active' };
   if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { city: new RegExp(q, 'i') }, { location: new RegExp(q, 'i') }];
@@ -80,10 +80,10 @@ r.get('/hotels/:id/prices', requireUser, ok(async (req, res) => {
   res.json(prices);
 }));
 
-r.get('/room-types', ok(async (_req, res) => res.json(await RoomType.find({ status: 'Active' }).sort('name').lean())));
-r.get('/meal-plans', ok(async (_req, res) => res.json(await MealPlan.find({ status: 'Active' }).sort('code').lean())));
+r.get('/room-types', requireUser, ok(async (_req, res) => res.json(await RoomType.find({ status: 'Active' }).sort('name').lean())));
+r.get('/meal-plans', requireUser, ok(async (_req, res) => res.json(await MealPlan.find({ status: 'Active' }).sort('code').lean())));
 
-r.get('/destinations', ok(async (_req, res) => {
+r.get('/destinations', requireUser, ok(async (_req, res) => {
   const rows = await Hotel.aggregate([
     { $match: { status: 'Active' } },
     { $group: { _id: '$city', count: { $sum: 1 }, image: { $first: { $arrayElemAt: ['$images', 0] } } } },
@@ -93,7 +93,7 @@ r.get('/destinations', ok(async (_req, res) => {
 }));
 
 // POST /api/leads
-r.post('/leads', ok(async (req, res) => {
+r.post('/leads', requireUser, ok(async (req, res) => {
   const b = req.body || {};
   if (!b.name || !b.email || !b.phone) return res.status(400).json({ error: 'Name, email and phone are required' });
   if (b.hotelId && !String(b.hotelId).match(/^[0-9a-f]{24}$/i)) delete b.hotelId;

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User } from '../models/index.js';
+import { hashPassword } from '../lib/auth.js';
 
 const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
@@ -131,6 +132,43 @@ r.get('/users', ok(async (req, res) => {
     User.countDocuments(filter),
   ]);
   res.json({ data: rows, total, page: p, pages: Math.ceil(total / l) || 1 });
+}));
+
+r.post('/users', ok(async (req, res) => {
+  const { name, email, phone, password, status } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+  if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+  const exists = await User.findOne({ email: String(email).toLowerCase() });
+  if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
+
+  const user = await User.create({
+    name, email, phone: phone || '',
+    passwordHash: hashPassword(String(password)),
+    status: status === 'Blocked' ? 'Blocked' : 'Active',
+  });
+  const { passwordHash, ...safe } = user.toObject();
+  res.status(201).json(safe);
+}));
+
+r.put('/users/:id', ok(async (req, res) => {
+  const { name, email, phone, password, status } = req.body || {};
+  const patch = {};
+  if (name) patch.name = name;
+  if (phone !== undefined) patch.phone = phone;
+  if (status && ['Active', 'Blocked'].includes(status)) patch.status = status;
+  if (email) {
+    const clash = await User.findOne({ email: String(email).toLowerCase(), _id: { $ne: req.params.id } });
+    if (clash) return res.status(409).json({ error: 'Another account already uses this email' });
+    patch.email = email;
+  }
+  if (password) {
+    if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    patch.passwordHash = hashPassword(String(password));
+  }
+  const user = await User.findByIdAndUpdate(req.params.id, patch, { new: true }).select('-passwordHash');
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
 }));
 
 r.patch('/users/:id/status', ok(async (req, res) => {
