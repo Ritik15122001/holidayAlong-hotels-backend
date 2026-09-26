@@ -38,7 +38,15 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // Uploaded images are served straight off disk.
-app.use('/uploads', express.static(path.join(ROOT, 'uploads'), { maxAge: '30d' }));
+app.use('/uploads', express.static(path.join(ROOT, 'uploads'), {
+  maxAge: '30d',
+  setHeaders: (res, filePath) => {
+    // PDFs and Word files should save rather than render in the tab
+    if (/\.(pdf|docx?)$/i.test(filePath)) {
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+    }
+  },
+}));
 app.use('/api/auth', authRoutes);
 app.use('/api', publicRoutes);
 app.use('/api/admin/uploads', auth, uploadRoutes);

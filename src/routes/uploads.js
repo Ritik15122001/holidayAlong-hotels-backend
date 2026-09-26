@@ -9,7 +9,13 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', 'uploads');
 fs.mkdirSync(DIR, { recursive: true });
 
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+const IMAGES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+const DOCS = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const ALLOWED = new Set([...IMAGES, ...DOCS]);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, DIR),
@@ -21,9 +27,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 10 },
+  limits: { fileSize: 25 * 1024 * 1024, files: 10 },
   fileFilter: (_req, file, cb) =>
-    ALLOWED.has(file.mimetype) ? cb(null, true) : cb(new Error('Only JPG, PNG, WebP, GIF or AVIF images are allowed')),
+    ALLOWED.has(file.mimetype) ? cb(null, true) : cb(new Error('Allowed files: JPG, PNG, WebP, GIF, AVIF, PDF, DOC or DOCX')),
 });
 
 const r = Router();
