@@ -178,7 +178,7 @@ r.get('/leads', ok(async (req, res) => {
   const { q, status, page = 1, limit = 15 } = req.query;
   const filter = {};
   if (status) filter.status = status;
-  if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }, { phone: new RegExp(q, 'i') }, { hotelName: new RegExp(q, 'i') }];
+  if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }, { phone: new RegExp(q, 'i') }, { hotelName: new RegExp(q, 'i') }, { userName: new RegExp(q, 'i') }, { userEmail: new RegExp(q, 'i') }];
   const p = Math.max(1, Number(page)), l = Math.max(1, Number(limit));
   const [rows, total] = await Promise.all([
     Lead.find(filter).sort({ createdAt: -1 }).skip((p - 1) * l).limit(l).populate('hotelId', 'name city').lean(),

@@ -19,6 +19,11 @@ const hotelSchema = new Schema({
   checkIn: { type: String, default: '14:00' },
   checkOut: { type: String, default: '11:00' },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', index: true },
+  // Google Places id, used to pull the live rating
+  googlePlaceId: { type: String, default: '', trim: true },
+  googleRating: { type: Number },
+  googleReviewCount: { type: Number },
+  googleSyncedAt: { type: Date },
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
 }, { timestamps: true });
 
@@ -76,6 +81,10 @@ const leadSchema = new Schema({
   city: { type: String, default: '', trim: true },
   state: { type: String, default: '', trim: true },
   country: { type: String, default: 'India', trim: true },
+  // which signed-in account submitted this, captured server-side
+  userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+  userName: { type: String, default: '' },
+  userEmail: { type: String, default: '' },
   hotelId: { type: Schema.Types.ObjectId, ref: 'Hotel' },
   hotelName: { type: String, default: '' },
   checkIn: { type: Date },

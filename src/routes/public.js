@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Hotel, HotelPrice, RoomType, MealPlan, Lead, City, Location, Vendor, Brochure, Format, Amenity } from '../models/index.js';
 import { requireUser } from '../lib/auth.js';
+import { fetchGoogleRating, googleEnabled } from '../lib/google.js';
 
 const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
@@ -71,6 +72,19 @@ r.get('/hotels/:id', requireUser, ok(async (req, res) => {
 }));
 
 // GET /api/hotels/:id/prices
+r.get('/hotels/:id/google-rating', requireUser, ok(async (req, res) => {
+  const hotel = await Hotel.findById(req.params.id).select('googlePlaceId googleRating googleReviewCount googleSyncedAt').lean();
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+  if (!hotel.googlePlaceId) return res.json({ available: false, reason: 'no_place_id' });
+  if (!googleEnabled()) return res.json({ available: false, reason: 'no_api_key' });
+  try {
+    const data = await fetchGoogleRating(hotel);
+    res.json({ available: data?.rating != null, ...data });
+  } catch (e) {
+    res.json({ available: false, reason: 'lookup_failed', error: e.message });
+  }
+}));
+
 r.get('/hotels/:id/prices', requireUser, ok(async (req, res) => {
   const { date, all } = req.query;
   const filter = { hotelId: req.params.id };
@@ -141,6 +155,11 @@ r.post('/leads', requireUser, ok(async (req, res) => {
     const h = await Hotel.findById(b.hotelId).select('name').lean();
     if (h) b.hotelName = h.name;
   }
+  // the submitting account comes from the token, never from the form
+  b.userId = req.user?.sub;
+  b.userName = req.user?.name || '';
+  b.userEmail = req.user?.email || '';
+
   const lead = await Lead.create(b);
   res.status(201).json({ id: lead._id, message: 'Thank you. Our team will confirm your booking shortly.' });
 }));
