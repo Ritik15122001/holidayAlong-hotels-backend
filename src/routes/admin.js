@@ -39,6 +39,12 @@ r.get('/stats', ok(async (_req, res) => {
 }));
 
 // Hotels
+/** Empty strings from a form cannot cast to ObjectId — treat them as unset. */
+const clearBlankRefs = (body, fields = ['vendorId']) => {
+  for (const f of fields) if (body?.[f] === '' || body?.[f] === undefined) delete body[f];
+  return body;
+};
+
 r.get('/hotels', ok(async (req, res) => {
   const { q, status, page = 1, limit = 10 } = req.query;
   const filter = {};
@@ -57,9 +63,9 @@ r.get('/hotels', ok(async (req, res) => {
   res.json({ data: rows.map((h) => ({ ...h, priceCount: map[String(h._id)] || 0 })), total, page: p, pages: Math.ceil(total / l) || 1 });
 }));
 
-r.post('/hotels', ok(async (req, res) => res.status(201).json(await Hotel.create(req.body))));
+r.post('/hotels', ok(async (req, res) => res.status(201).json(await Hotel.create(clearBlankRefs(req.body)))));
 r.put('/hotels/:id', ok(async (req, res) => {
-  const h = await Hotel.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  const h = await Hotel.findByIdAndUpdate(req.params.id, clearBlankRefs(req.body), { new: true, runValidators: true });
   if (!h) return res.status(404).json({ error: 'Not found' });
   res.json(h);
 }));
