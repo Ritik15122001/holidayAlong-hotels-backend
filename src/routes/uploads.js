@@ -35,8 +35,10 @@ const upload = multer({
 const r = Router();
 
 /** Absolute URL so the admin panel and website can both load it cross-origin. */
-const publicUrl = (req, name) =>
-  `${process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/uploads/${name}`;
+const publicUrl = (req, name) => {
+  const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  return `${base}/api/uploads/${name}`;
+};
 
 r.post('/', (req, res) => {
   upload.array('files', 10)(req, res, (err) => {

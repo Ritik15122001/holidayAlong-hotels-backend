@@ -32,13 +32,18 @@ if (!process.env.USER_JWT_SECRET) {
 process.env.ADMIN_TOKEN ||= 'hotel-admin-token';
 
 const app = express();
+// behind nginx/pm2 so req.protocol reflects the original https request
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // Uploaded images are served straight off disk.
-app.use('/uploads', express.static(path.join(ROOT, 'uploads'), {
+// Served under /api so it rides the same proxy rule as the rest of the API —
+// a bare /uploads path is handled by the frontend host and never reaches us.
+const uploadsDir = path.join(ROOT, 'uploads');
+const staticOpts = {
   maxAge: '30d',
   setHeaders: (res, filePath) => {
     // PDFs and Word files should save rather than render in the tab
@@ -46,7 +51,10 @@ app.use('/uploads', express.static(path.join(ROOT, 'uploads'), {
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
     }
   },
-}));
+};
+app.use('/api/uploads', express.static(uploadsDir, staticOpts));
+app.use('/uploads', express.static(uploadsDir, staticOpts));   // kept for older links
+
 app.use('/api/auth', authRoutes);
 app.use('/api', publicRoutes);
 app.use('/api/admin/uploads', auth, uploadRoutes);
