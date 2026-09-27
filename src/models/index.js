@@ -7,7 +7,8 @@ const hotelSchema = new Schema({
   slug: { type: String, unique: true, index: true },
   city: { type: String, required: true, trim: true, index: true },
   location: { type: String, required: true, trim: true },
-  starCategory: { type: Number, required: true, min: 1, max: 5, index: true },
+  // '3 Star', 'Homestay', 'Villa' … see lib/categories.js
+  starCategory: { type: String, required: true, trim: true, index: true },
   description: { type: String, default: '' },
   images: { type: [String], default: [] },
   amenities: { type: [String], default: [] },

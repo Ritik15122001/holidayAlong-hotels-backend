@@ -12,7 +12,7 @@ r.get('/hotels', requireUser, ok(async (req, res) => {
   const filter = { status: 'Active' };
   if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { city: new RegExp(q, 'i') }, { location: new RegExp(q, 'i') }];
   if (city) filter.city = new RegExp(`^${city}$`, 'i');
-  if (stars) filter.starCategory = { $in: String(stars).split(',').map(Number) };
+  if (stars) filter.starCategory = { $in: String(stars).split(',').map((v) => v.trim()).filter(Boolean) };
   if (rating) filter.rating = { $gte: Number(rating) };
 
   let hotels = await Hotel.find(filter).sort({ createdAt: -1 }).lean();

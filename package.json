@@ -6,7 +6,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "seed": "node src/seed.js",
-    "fix-urls": "node src/fix-upload-urls.js"
+    "fix-urls": "node src/fix-upload-urls.js",
+    "fix-categories": "node src/fix-categories.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
