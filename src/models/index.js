@@ -18,6 +18,16 @@ const hotelSchema = new Schema({
   rating: { type: Number, default: 4.5 },
   checkIn: { type: String, default: '14:00' },
   checkOut: { type: String, default: '11:00' },
+  // brochures, rate sheets, contracts — shown on the hotel page
+  documents: {
+    type: [{
+      name: { type: String, default: '', trim: true },
+      url: { type: String, required: true, trim: true },
+      size: { type: Number, default: 0 },
+      _id: false,
+    }],
+    default: [],
+  },
   vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', index: true },
   // Google Places id, used to pull the live rating
   googlePlaceId: { type: String, default: '', trim: true },
@@ -87,11 +97,22 @@ const leadSchema = new Schema({
   userEmail: { type: String, default: '' },
   hotelId: { type: Schema.Types.ObjectId, ref: 'Hotel' },
   hotelName: { type: String, default: '' },
+  // first stay
   checkIn: { type: Date },
   checkOut: { type: Date },
+  // optional second stay at the same hotel
+  reCheckIn: { type: Date },
+  reCheckOut: { type: Date },
+  nights: { type: Number, default: 0 },
   rooms: { type: Number, default: 1 },
-  adults: { type: Number, default: 2 },
-  children: { type: Number, default: 0 },
+  adults: { type: Number, default: 2 },          // 12+ years
+  children: { type: Number, default: 0 },        // total, kept for older records
+  childWithBed: { type: Number, default: 0 },
+  childNoBed: { type: Number, default: 0 },
+  childNoBedAges: { type: String, default: '', trim: true },
+  extraBeds: { type: Number, default: 0 },
+  extraInclusions: { type: String, default: '', trim: true },
+  totalAmount: { type: String, default: '', trim: true },
   roomType: { type: String, default: '' },
   mealPlan: { type: String, default: '' },
   message: { type: String, default: '' },

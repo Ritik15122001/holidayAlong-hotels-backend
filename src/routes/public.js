@@ -106,13 +106,14 @@ r.get('/locations', requireUser, ok(async (req, res) => {
   res.json(await Location.find(filter).populate('cityId', 'name state').sort('name').lean());
 }));
 
-// Public vendor directory. Bank, GST/PAN and UPI details are deliberately
-// excluded — those are admin-only.
+// Public vendor directory: company name and type only. Contact details,
+// sectors and anything commercial stay in the admin panel.
 r.get('/vendors', requireUser, ok(async (req, res) => {
   const filter = { status: 'Active' };
   if (req.query.type) filter.vendorType = req.query.type;
+  // the public directory lists names only — no contact or commercial detail
   const rows = await Vendor.find(filter)
-    .select('companyName contactPerson phones emails website vendorType sectors')
+    .select('companyName vendorType')
     .sort('companyName').lean();
   const counts = await Hotel.aggregate([
     { $match: { status: 'Active', vendorId: { $ne: null } } },
@@ -150,6 +151,13 @@ r.post('/leads', requireUser, ok(async (req, res) => {
   if (!b.name || !b.email || !b.phone) return res.status(400).json({ error: 'Name, email and phone are required' });
   if (!b.checkIn || !b.checkOut) return res.status(400).json({ error: 'Check-in and check-out dates are required' });
   if (new Date(b.checkOut) <= new Date(b.checkIn)) return res.status(400).json({ error: 'Check-out must be after check-in' });
+  if (b.reCheckIn && b.reCheckOut && new Date(b.reCheckOut) <= new Date(b.reCheckIn)) {
+    return res.status(400).json({ error: 'Re-check-out must be after re-check-in' });
+  }
+
+  // nights across both stays, worked out server-side
+  const span = (a, z) => (a && z ? Math.max(0, Math.round((new Date(z) - new Date(a)) / 864e5)) : 0);
+  b.nights = span(b.checkIn, b.checkOut) + span(b.reCheckIn, b.reCheckOut);
   if (b.hotelId && !String(b.hotelId).match(/^[0-9a-f]{24}$/i)) delete b.hotelId;
   if (b.hotelId) {
     const h = await Hotel.findById(b.hotelId).select('name').lean();
