@@ -148,7 +148,7 @@ r.get('/destinations', requireUser, ok(async (_req, res) => {
 // POST /api/leads
 r.post('/leads', requireUser, ok(async (req, res) => {
   const b = req.body || {};
-  if (!b.name || !b.email || !b.phone) return res.status(400).json({ error: 'Name, email and phone are required' });
+  if (!b.name) return res.status(400).json({ error: 'Guest name is required' });
   if (!b.checkIn || !b.checkOut) return res.status(400).json({ error: 'Check-in and check-out dates are required' });
   if (new Date(b.checkOut) <= new Date(b.checkIn)) return res.status(400).json({ error: 'Check-out must be after check-in' });
   if (b.reCheckIn && b.reCheckOut && new Date(b.reCheckOut) <= new Date(b.reCheckIn)) {
@@ -164,6 +164,9 @@ r.post('/leads', requireUser, ok(async (req, res) => {
     if (h) b.hotelName = h.name;
   }
   // the submitting account comes from the token, never from the form
+  // the form follows the trade-partner format and does not ask for contact
+  // details, so they come from the signed-in account
+  b.email = b.email || req.user?.email || '';
   b.userId = req.user?.sub;
   b.userName = req.user?.name || '';
   b.userEmail = req.user?.email || '';

@@ -84,8 +84,8 @@ hotelPriceSchema.pre('validate', function (next) {
 
 const leadSchema = new Schema({
   name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, trim: true, lowercase: true },
-  phone: { type: String, required: true, trim: true },
+  email: { type: String, default: '', trim: true, lowercase: true },
+  phone: { type: String, default: '', trim: true },
   altPhone: { type: String, default: '', trim: true },
   address: { type: String, default: '', trim: true },
   city: { type: String, default: '', trim: true },
