@@ -106,14 +106,14 @@ r.get('/locations', requireUser, ok(async (req, res) => {
   res.json(await Location.find(filter).populate('cityId', 'name state').sort('name').lean());
 }));
 
-// Public vendor directory: company name and type only. Contact details,
-// sectors and anything commercial stay in the admin panel.
+// Vendor directory. The whole site sits behind a login, so business and
+// contact details are shown; bank credentials are not.
 r.get('/vendors', requireUser, ok(async (req, res) => {
   const filter = { status: 'Active' };
   if (req.query.type) filter.vendorType = req.query.type;
   // the public directory lists names only — no contact or commercial detail
   const rows = await Vendor.find(filter)
-    .select('companyName vendorType')
+    .select('companyName contactPerson phones emails website vendorType sectors gstPan status')
     .sort('companyName').lean();
   const counts = await Hotel.aggregate([
     { $match: { status: 'Active', vendorId: { $ne: null } } },
