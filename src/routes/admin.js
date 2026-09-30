@@ -212,6 +212,55 @@ r.get('/vendors', ok(async (req, res) => {
 r.get('/vendors/:id/hotels', ok(async (req, res) =>
   res.json(await Hotel.find({ vendorId: req.params.id }).select('name city location starCategory status').sort('name').lean())));
 
+// Bulk update vendor records from an uploaded sheet. Rows are matched on
+// company name; unknown names are reported back rather than silently created.
+r.post('/vendors/bulk', ok(async (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'The sheet has no rows' });
+
+  const vendors = await Vendor.find().select('companyName').lean();
+  const byName = new Map(vendors.map((v) => [String(v.companyName).trim().toLowerCase(), v._id]));
+
+  const TEXT = ['contactPerson', 'website', 'gstPan', 'bankName', 'accountNumber', 'ifsc', 'upi'];
+  const list = (v) => String(v ?? '').split(/[,;|]/).map((x) => x.trim()).filter(Boolean);
+
+  let updated = 0, created = 0;
+  const errors = [];
+
+  for (const [i, row] of rows.entries()) {
+    const line = i + 2; // sheet row, allowing for the header
+    const name = String(row.companyName ?? '').trim();
+    if (!name) { errors.push(`Row ${line}: company name is blank`); continue; }
+
+    const patch = {};
+    for (const f of TEXT) {
+      if (row[f] !== undefined && String(row[f]).trim() !== '') patch[f] = String(row[f]).trim();
+    }
+    if (patch.ifsc) patch.ifsc = patch.ifsc.toUpperCase();
+    if (String(row.phones ?? '').trim()) patch.phones = list(row.phones);
+    if (String(row.emails ?? '').trim()) patch.emails = list(row.emails);
+    if (String(row.sectors ?? '').trim()) patch.sectors = list(row.sectors);
+    if (String(row.vendorType ?? '').trim()) patch.vendorType = String(row.vendorType).trim();
+    if (String(row.status ?? '').trim()) {
+      patch.status = String(row.status).trim().toLowerCase() === 'inactive' ? 'Inactive' : 'Active';
+    }
+
+    if (!Object.keys(patch).length) { errors.push(`Row ${line}: nothing to update for “${name}”`); continue; }
+
+    const id = byName.get(name.toLowerCase());
+    if (!id) { errors.push(`Row ${line}: no vendor named “${name}” — check the spelling`); continue; }
+
+    try {
+      await Vendor.findByIdAndUpdate(id, patch, { runValidators: true });
+      updated += 1;
+    } catch (err) {
+      errors.push(`Row ${line}: ${err.message}`);
+    }
+  }
+
+  res.json({ updated, created, failed: errors.length, errors: errors.slice(0, 12) });
+}));
+
 r.post('/vendors', ok(async (req, res) => res.status(201).json(await Vendor.create(req.body))));
 r.put('/vendors/:id', ok(async (req, res) => res.json(await Vendor.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }))));
 r.delete('/vendors/:id', ok(async (req, res) => {
