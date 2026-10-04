@@ -45,13 +45,17 @@ r.get('/hotels', requireUser, ok(async (req, res) => {
     const list = byHotel[String(h._id)] || [];
     const valid = list.filter((p) => p.doublePrice > 0);
     const cheapest = valid.sort((a, b) => a.doublePrice - b.doublePrice)[0];
+    const quoted = bestQuote(list, party, nights, req.query.checkIn || null);
     return {
       ...h,
       startingPrice: cheapest ? cheapest.doublePrice : null,
       currency: cheapest ? cheapest.currency : 'INR',
       topRoomType: cheapest?.roomTypeId?.name || '',
       topMealPlan: cheapest?.mealPlanId?.code || '',
-      quote: bestQuote(list, party, nights),
+      quote: quoted,
+      // dates were given but nothing is loaded for them — the card says so
+      // rather than quietly falling back to an unrelated starting price
+      noRateForDates: Boolean(req.query.checkIn) && !quoted,
       roomTypes: [...new Set(list.map((p) => p.roomTypeId?.name).filter(Boolean))],
       mealPlans: [...new Set(list.map((p) => p.mealPlanId?.code).filter(Boolean))],
       priceCount: list.length,

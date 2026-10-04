@@ -78,15 +78,111 @@ export function quoteFor(price, party = {}, nights = 1) {
   };
 }
 
-/** The cheapest quote across a hotel's rates for the requested party. */
-export function bestQuote(prices = [], party = {}, nights = 1) {
-  let best = null;
-  for (const p of prices) {
-    const q = quoteFor(p, party, nights);
-    if (!q) continue;
-    if (!best || q.total < best.total) {
-      best = { ...q, roomType: p.roomTypeId?.name || '', mealPlan: p.mealPlanId?.code || '' };
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+
+/** How many days a rate row covers — open-ended rows count as the widest. */
+const spanOf = (price) => {
+  if (!price.startDate || !price.endDate) return Infinity;
+  return Math.max(0, startOfDay(price.endDate) - startOfDay(price.startDate));
+};
+
+/** Is this rate row in force on the given night? */
+export function activeOn(price, date) {
+  if (price.status && price.status !== 'Active') return false;
+  const night = startOfDay(date);
+  const from = price.startDate ? startOfDay(price.startDate) : -Infinity;
+  const to = price.endDate ? startOfDay(price.endDate) : Infinity;
+  return night >= from && night <= to;
+}
+
+/** The nights of a stay — check-out day is not charged. */
+const nightsOf = (checkIn, nights) =>
+  Array.from({ length: nights }, (_, i) => new Date(startOfDay(checkIn) + i * 864e5));
+
+/**
+ * Cheapest quote for the party across the stay.
+ *
+ * Each night is charged at the rate in force that night, so a stay crossing a
+ * season boundary picks up both rates. A room type and meal plan must cover
+ * every night to be quotable, otherwise that combination is skipped.
+ */
+export function bestQuote(prices = [], party = {}, nights = 1, checkIn = null) {
+  const stay = Math.max(1, Math.trunc(nights) || 1);
+
+  // no dates to work with — fall back to rating every row on its own
+  if (!checkIn) {
+    let best = null;
+    for (const p of prices) {
+      const q = quoteFor(p, party, stay);
+      if (q && (!best || q.total < best.total)) {
+        best = { ...q, roomType: p.roomTypeId?.name || '', mealPlan: p.mealPlanId?.code || '' };
+      }
     }
+    return best;
   }
+
+  const dates = nightsOf(checkIn, stay);
+
+  // group the rows by what a guest actually picks: room type and meal plan
+  const combos = new Map();
+  for (const p of prices) {
+    const key = `${p.roomTypeId?.name || ''}|${p.mealPlanId?.code || ''}`;
+    if (!combos.has(key)) combos.set(key, []);
+    combos.get(key).push(p);
+  }
+
+  let best = null;
+
+  for (const [key, rows] of combos) {
+    const perNight = [];
+    let usable = true;
+
+    for (const date of dates) {
+      const live = rows.filter((p) => activeOn(p, date));
+
+      // A narrower window is a deliberate override of a broader one, so a
+      // peak-season row wins over the year-round rate it sits inside. Only
+      // equally specific rows are then settled on price.
+      let picked = null;
+      let pickedSpan = Infinity;
+      for (const p of live) {
+        const q = quoteFor(p, party, 1);
+        if (!q) continue;
+        const span = spanOf(p);
+        if (span < pickedSpan || (span === pickedSpan && q.perNight < picked.perNight)) {
+          picked = q;
+          pickedSpan = span;
+        }
+      }
+      if (!picked) { usable = false; break; }       // a night nobody prices
+      perNight.push({ date, rate: picked.perNight, currency: picked.currency });
+    }
+    if (!usable) continue;
+
+    const total = perNight.reduce((sum, x) => sum + x.rate, 0);
+    if (best && total >= best.total) continue;
+
+    const [roomType, mealPlan] = key.split('|');
+
+    // collapse consecutive nights on the same rate into readable segments
+    const segments = [];
+    for (const nightRate of perNight) {
+      const last = segments[segments.length - 1];
+      if (last && last.rate === nightRate.rate) last.nights += 1;
+      else segments.push({ rate: nightRate.rate, nights: 1, from: nightRate.date });
+    }
+
+    best = {
+      total,
+      nights: stay,
+      perNight: Math.round(total / stay),
+      currency: perNight[0].currency,
+      roomType,
+      mealPlan,
+      seasonal: segments.length > 1,
+      segments: segments.map((x) => ({ rate: x.rate, nights: x.nights, from: x.from })),
+    };
+  }
+
   return best;
 }
