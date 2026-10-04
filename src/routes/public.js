@@ -8,21 +8,29 @@ import { fetchGoogleRating, googleEnabled } from '../lib/google.js';
 const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
 
+// The party and stay length a quote is built for. Shared by the list and the
+// detail route so a hotel never shows one price in search and another when
+// you open it.
+const partyFrom = (req) => {
+  const int = (v, d = 0) => { const x = Math.trunc(Number(v)); return Number.isFinite(x) && x >= 0 ? x : d; };
+  const span = (a, z) => (a && z ? Math.round((new Date(z) - new Date(a)) / 864e5) : 0);
+  return {
+    party: {
+      rooms: Math.max(1, int(req.query.rooms, 1)),
+      adults: Math.max(1, int(req.query.adults, 2)),
+      extraBeds: int(req.query.extraBeds),
+      cwb: int(req.query.cwb),
+      cnb: int(req.query.cnb),
+    },
+    nights: Math.max(1, int(req.query.nights) || span(req.query.checkIn, req.query.checkOut) || 1),
+  };
+};
+
 // GET /api/hotels
 r.get('/hotels', requireUser, ok(async (req, res) => {
   const { q, city, stars, minPrice, maxPrice, rating, roomType, mealPlan, page = 1, limit = 12, sort } = req.query;
 
-  // the party being quoted for — all optional, defaults to one double room
-  const int = (v, d = 0) => { const x = Math.trunc(Number(v)); return Number.isFinite(x) && x >= 0 ? x : d; };
-  const party = {
-    rooms: Math.max(1, int(req.query.rooms, 1)),
-    adults: Math.max(1, int(req.query.adults, 2)),
-    extraBeds: int(req.query.extraBeds),
-    cwb: int(req.query.cwb),
-    cnb: int(req.query.cnb),
-  };
-  const span = (a, z) => (a && z ? Math.round((new Date(z) - new Date(a)) / 864e5) : 0);
-  const nights = Math.max(1, int(req.query.nights) || span(req.query.checkIn, req.query.checkOut) || 1);
+  const { party, nights } = partyFrom(req);
   const filter = { status: 'Active' };
   if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { city: new RegExp(q, 'i') }, { location: new RegExp(q, 'i') }];
   if (city) filter.city = new RegExp(`^${city}$`, 'i');
@@ -90,7 +98,18 @@ r.get('/hotels/:id', requireUser, ok(async (req, res) => {
   const { id } = req.params;
   const hotel = await Hotel.findOne(id.match(/^[0-9a-f]{24}$/i) ? { _id: id } : { slug: id }).lean();
   if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
-  res.json(hotel);
+
+  // quote on the same basis as the search card that linked here
+  const { party, nights } = partyFrom(req);
+  const prices = await HotelPrice.find({ hotelId: hotel._id, status: 'Active' })
+    .populate('roomTypeId', 'name').populate('mealPlanId', 'code').lean();
+  const quote = bestQuote(prices, party, nights, req.query.checkIn || null);
+
+  res.json({
+    ...hotel,
+    quote,
+    noRateForDates: Boolean(req.query.checkIn) && !quote,
+  });
 }));
 
 // GET /api/hotels/:id/prices
