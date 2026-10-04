@@ -40,8 +40,14 @@ r.get('/stats', ok(async (_req, res) => {
 
 // Hotels
 /** Empty strings from a form cannot cast to ObjectId — treat them as unset. */
+// An empty string is not a valid ObjectId, so blank it to null — which is how
+// a reference gets cleared. Deleting the key instead would silently keep the
+// old link, leaving no way to unassign a vendor.
 const clearBlankRefs = (body, fields = ['vendorId']) => {
-  for (const f of fields) if (body?.[f] === '' || body?.[f] === undefined) delete body[f];
+  for (const f of fields) {
+    if (body?.[f] === undefined) continue;
+    if (body[f] === '' || body[f] === null) body[f] = null;
+  }
   return body;
 };
 

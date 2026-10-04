@@ -123,6 +123,26 @@ r.get('/vendors', requireUser, ok(async (req, res) => {
   res.json(rows.map((v) => ({ ...v, hotelCount: byVendor[String(v._id)] || 0 })));
 }));
 
+// Cities, their vendors and the hotels under each — drives the cascading
+// pickers on the booking form. One call, since these lists are small.
+r.get('/booking-options', requireUser, ok(async (_req, res) => {
+  const hotels = await Hotel.find({ status: 'Active' }).select('name city vendorId').sort('name').lean();
+
+  const ids = [...new Set(hotels.map((h) => String(h.vendorId || '')).filter(Boolean))];
+  const vendors = ids.length
+    ? await Vendor.find({ _id: { $in: ids } }).select('companyName').lean()
+    : [];
+  const nameById = Object.fromEntries(vendors.map((v) => [String(v._id), v.companyName]));
+
+  res.json(hotels.map((h) => ({
+    _id: String(h._id),
+    name: h.name,
+    city: h.city || '',
+    vendorId: h.vendorId ? String(h.vendorId) : '',
+    vendorName: h.vendorId ? nameById[String(h.vendorId)] || '' : '',
+  })));
+}));
+
 r.get('/vendors/:id/hotels', requireUser, ok(async (req, res) =>
   res.json(await Hotel.find({ vendorId: req.params.id, status: 'Active' })
     .select('name slug city location starCategory images rating').sort('name').lean())));
