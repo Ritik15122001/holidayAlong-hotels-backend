@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { Hotel, HotelPrice, RoomType, MealPlan, Lead, City, Location, Vendor, Brochure, Format, Amenity } from '../models/index.js';
 import { requireUser } from '../lib/auth.js';
 import { sendBookingToHotel } from '../lib/mail.js';
+import { bestQuote } from '../lib/pricing.js';
 import { fetchGoogleRating, googleEnabled } from '../lib/google.js';
 
 const r = Router();
@@ -10,6 +11,18 @@ const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json(
 // GET /api/hotels
 r.get('/hotels', requireUser, ok(async (req, res) => {
   const { q, city, stars, minPrice, maxPrice, rating, roomType, mealPlan, page = 1, limit = 12, sort } = req.query;
+
+  // the party being quoted for — all optional, defaults to one double room
+  const int = (v, d = 0) => { const x = Math.trunc(Number(v)); return Number.isFinite(x) && x >= 0 ? x : d; };
+  const party = {
+    rooms: Math.max(1, int(req.query.rooms, 1)),
+    adults: Math.max(1, int(req.query.adults, 2)),
+    extraBeds: int(req.query.extraBeds),
+    cwb: int(req.query.cwb),
+    cnb: int(req.query.cnb),
+  };
+  const span = (a, z) => (a && z ? Math.round((new Date(z) - new Date(a)) / 864e5) : 0);
+  const nights = Math.max(1, int(req.query.nights) || span(req.query.checkIn, req.query.checkOut) || 1);
   const filter = { status: 'Active' };
   if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { city: new RegExp(q, 'i') }, { location: new RegExp(q, 'i') }];
   if (city) filter.city = new RegExp(`^${city}$`, 'i');
@@ -38,6 +51,7 @@ r.get('/hotels', requireUser, ok(async (req, res) => {
       currency: cheapest ? cheapest.currency : 'INR',
       topRoomType: cheapest?.roomTypeId?.name || '',
       topMealPlan: cheapest?.mealPlanId?.code || '',
+      quote: bestQuote(list, party, nights),
       roomTypes: [...new Set(list.map((p) => p.roomTypeId?.name).filter(Boolean))],
       mealPlans: [...new Set(list.map((p) => p.mealPlanId?.code).filter(Boolean))],
       priceCount: list.length,
@@ -52,11 +66,14 @@ r.get('/hotels', requireUser, ok(async (req, res) => {
     const want = String(mealPlan).split(',');
     hotels = hotels.filter((h) => h.mealPlans.some((t) => want.includes(t)));
   }
-  if (minPrice) hotels = hotels.filter((h) => h.startingPrice != null && h.startingPrice >= Number(minPrice));
-  if (maxPrice) hotels = hotels.filter((h) => h.startingPrice != null && h.startingPrice <= Number(maxPrice));
+  // price filters and sorting follow the quoted stay total when one exists,
+  // so they line up with the figure actually shown on the card
+  const forSort = (h) => h.quote?.perNight ?? h.startingPrice;
+  if (minPrice) hotels = hotels.filter((h) => forSort(h) != null && forSort(h) >= Number(minPrice));
+  if (maxPrice) hotels = hotels.filter((h) => forSort(h) != null && forSort(h) <= Number(maxPrice));
 
-  if (sort === 'price_asc') hotels.sort((a, b) => (a.startingPrice ?? 1e9) - (b.startingPrice ?? 1e9));
-  if (sort === 'price_desc') hotels.sort((a, b) => (b.startingPrice ?? 0) - (a.startingPrice ?? 0));
+  if (sort === 'price_asc') hotels.sort((a, b) => (forSort(a) ?? 1e9) - (forSort(b) ?? 1e9));
+  if (sort === 'price_desc') hotels.sort((a, b) => (forSort(b) ?? 0) - (forSort(a) ?? 0));
   if (sort === 'rating') hotels.sort((a, b) => b.rating - a.rating);
 
   const total = hotels.length;
