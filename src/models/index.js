@@ -118,6 +118,10 @@ const leadSchema = new Schema({
   mealPlan: { type: String, default: '' },
   message: { type: String, default: '' },
   status: { type: String, enum: ['New', 'Contacted', 'Closed'], default: 'New', index: true },
+  // outcome of the automatic mail to the hotel, for the admin bookings list
+  mailedTo: { type: String, default: '' },
+  mailedAt: { type: Date },
+  mailError: { type: String, default: '' },
 }, { timestamps: true });
 
 const userSchema = new Schema({

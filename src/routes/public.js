@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Hotel, HotelPrice, RoomType, MealPlan, Lead, City, Location, Vendor, Brochure, Format, Amenity } from '../models/index.js';
 import { requireUser } from '../lib/auth.js';
+import { sendBookingToHotel } from '../lib/mail.js';
 import { fetchGoogleRating, googleEnabled } from '../lib/google.js';
 
 const r = Router();
@@ -179,9 +180,15 @@ r.post('/leads', requireUser, ok(async (req, res) => {
   const span = (a, z) => (a && z ? Math.max(0, Math.round((new Date(z) - new Date(a)) / 864e5)) : 0);
   b.nights = span(b.checkIn, b.checkOut) + span(b.reCheckIn, b.reCheckOut);
   if (b.hotelId && !String(b.hotelId).match(/^[0-9a-f]{24}$/i)) delete b.hotelId;
+  let hotelEmail = '';
   if (b.hotelId) {
-    const h = await Hotel.findById(b.hotelId).select('name').lean();
-    if (h) b.hotelName = h.name;
+    const h = await Hotel.findById(b.hotelId).select('name email').lean();
+    if (h) { b.hotelName = h.name; hotelEmail = h.email || ''; }
+  }
+  // booked by name rather than from a hotel page — look the hotel up
+  if (!hotelEmail && b.hotelName) {
+    const h = await Hotel.findOne({ name: String(b.hotelName).trim(), status: 'Active' }).select('email').lean();
+    if (h) hotelEmail = h.email || '';
   }
   // the submitting account comes from the token, never from the form
   // the form follows the trade-partner format and does not ask for contact
@@ -193,6 +200,14 @@ r.post('/leads', requireUser, ok(async (req, res) => {
 
   const lead = await Lead.create(b);
   res.status(201).json({ id: lead._id, message: 'Thank you. Our team will confirm your booking shortly.' });
+
+  // the guest already has their answer — mail the hotel afterwards so a slow
+  // or broken SMTP server can never hold up or fail a booking
+  sendBookingToHotel(lead.toObject(), hotelEmail)
+    .then((r) => Lead.findByIdAndUpdate(lead._id, r.sent
+      ? { mailedTo: hotelEmail, mailedAt: new Date(), mailError: '' }
+      : { mailError: r.reason || 'unknown' }).exec())
+    .catch((err) => console.error('booking mail failed:', err.message));
 }));
 
 export default r;
