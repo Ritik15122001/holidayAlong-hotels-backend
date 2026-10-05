@@ -103,12 +103,29 @@ r.get('/hotels/:id', requireUser, ok(async (req, res) => {
   const { party, nights } = partyFrom(req);
   const prices = await HotelPrice.find({ hotelId: hotel._id, status: 'Active' })
     .populate('roomTypeId', 'name').populate('mealPlanId', 'code').lean();
-  const quote = bestQuote(prices, party, nights, req.query.checkIn || null);
+  const checkIn = req.query.checkIn || null;
+  const quote = bestQuote(prices, party, nights, checkIn);
+
+  // the same quote per room type, so each row on the page prices the party
+  // being searched for rather than a lead-in nightly rate
+  const byRoom = new Map();
+  for (const pr of prices) {
+    const name = pr.roomTypeId?.name;
+    if (!name) continue;
+    if (!byRoom.has(name)) byRoom.set(name, []);
+    byRoom.get(name).push(pr);
+  }
+  const roomQuotes = [...byRoom].map(([roomType, rows]) => ({
+    roomType,
+    quote: bestQuote(rows, party, nights, checkIn),
+  }));
 
   res.json({
     ...hotel,
     quote,
-    noRateForDates: Boolean(req.query.checkIn) && !quote,
+    roomQuotes,
+    quotedNights: nights,
+    noRateForDates: Boolean(checkIn) && !quote,
   });
 }));
 
