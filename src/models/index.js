@@ -235,7 +235,18 @@ const libraryDocSchema = new Schema({
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
 }, { timestamps: true });
 
+/** A staff login for the admin panel. Separate from customer accounts. */
+const adminUserSchema = new Schema({
+  name: { type: String, required: true, trim: true },
+  username: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['Super Admin', 'Editor'], default: 'Editor', index: true },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+  lastLoginAt: { type: Date },
+}, { timestamps: true });
+
 export const Vendor = model('Vendor', vendorSchema);
+export const AdminUser = model('AdminUser', adminUserSchema);
 export const LibraryDoc = model('LibraryDoc', libraryDocSchema);
 export const FinanceEntry = model('FinanceEntry', financeEntrySchema);
 export const City = model('City', citySchema);

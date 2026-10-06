@@ -1,25 +1,101 @@
 import { Router } from 'express';
-import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure, Format, Amenity , LibraryDoc} from '../models/index.js';
-import { hashPassword } from '../lib/auth.js';
+import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure, Format, Amenity , LibraryDoc, AdminUser} from '../models/index.js';
+import { hashPassword, verifyPassword } from '../lib/auth.js';
+import { issueAdminToken, readAdminToken, requireArea, EDITOR_AREAS } from '../lib/adminAuth.js';
 
 const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
 
-// Simple token auth
+/**
+ * Accepts the environment's own token, which is always a Super Admin, or a
+ * signed staff token carrying that account's role. The role lands on
+ * req.admin so the area guard downstream can read it.
+ */
 export function auth(req, res, next) {
   if (req.path === '/login') return next();
   const token = (req.headers.authorization || '').replace('Bearer ', '');
-  if (token !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) {
+    req.admin = { role: 'Super Admin', name: process.env.ADMIN_USER || 'Admin', username: process.env.ADMIN_USER || 'admin' };
+    return next();
+  }
+
+  const payload = readAdminToken(token);
+  if (!payload) return res.status(401).json({ error: 'Unauthorized' });
+  req.admin = payload;
   next();
 }
 
-r.post('/login', (req, res) => {
+/** Super Admin only — used by the staff routes. */
+const superOnly = (req, res, next) =>
+  (req.admin?.role === 'Super Admin' ? next() : res.status(403).json({ error: 'Super Admin only' }));
+
+r.post('/login', ok(async (req, res) => {
   const { username, password } = req.body || {};
+  const id = String(username || '').trim().toLowerCase();
+
+  // the account from the environment stays the break-glass Super Admin
   if (username === process.env.ADMIN_USER && password === process.env.ADMIN_PASS) {
-    return res.json({ token: process.env.ADMIN_TOKEN, user: { username } });
+    return res.json({
+      token: process.env.ADMIN_TOKEN,
+      user: { username, name: username, role: 'Super Admin' },
+    });
   }
-  res.status(401).json({ error: 'Invalid credentials' });
-});
+
+  const staff = await AdminUser.findOne({ username: id }).lean();
+  if (!staff || staff.status !== 'Active' || !verifyPassword(password || '', staff.passwordHash)) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  AdminUser.updateOne({ _id: staff._id }, { lastLoginAt: new Date() }).exec();
+  res.json({
+    token: issueAdminToken(staff),
+    user: { username: staff.username, name: staff.name, role: staff.role },
+  });
+}));
+
+/** Who am I, and what may I see — the panel builds its menu from this. */
+r.get('/me', (req, res) => res.json({
+  name: req.admin?.name || '',
+  username: req.admin?.username || '',
+  role: req.admin?.role || 'Editor',
+  areas: req.admin?.role === 'Super Admin' ? null : [...EDITOR_AREAS],
+}));
+
+// Staff accounts for the admin panel
+r.get('/staff', superOnly, ok(async (_req, res) =>
+  res.json(await AdminUser.find().select('-passwordHash').sort('name').lean())));
+
+r.post('/staff', superOnly, ok(async (req, res) => {
+  const { name, username, password, role, status } = req.body || {};
+  if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' });
+  if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const doc = await AdminUser.create({
+    name, username: String(username).trim().toLowerCase(),
+    passwordHash: hashPassword(password),
+    role: role === 'Super Admin' ? 'Super Admin' : 'Editor',
+    status: status === 'Inactive' ? 'Inactive' : 'Active',
+  });
+  const { passwordHash, ...safe } = doc.toObject();
+  res.status(201).json(safe);
+}));
+
+r.put('/staff/:id', superOnly, ok(async (req, res) => {
+  const patch = { ...req.body };
+  delete patch.passwordHash;
+  if (patch.password) {
+    if (String(patch.password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    patch.passwordHash = hashPassword(patch.password);
+  }
+  delete patch.password;
+  if (patch.username) patch.username = String(patch.username).trim().toLowerCase();
+  res.json(await AdminUser.findByIdAndUpdate(req.params.id, patch, { new: true, runValidators: true }).select('-passwordHash'));
+}));
+
+r.delete('/staff/:id', superOnly, ok(async (req, res) => {
+  await AdminUser.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
+}));
 
 // Dashboard
 r.get('/stats', ok(async (_req, res) => {

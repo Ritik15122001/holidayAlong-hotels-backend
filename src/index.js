@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import publicRoutes from './routes/public.js';
 import adminRoutes, { auth } from './routes/admin.js';
 import financeRoutes from './routes/finance.js';
+import { requireArea } from './lib/adminAuth.js';
 import authRoutes from './routes/auth.js';
 import uploadRoutes from './routes/uploads.js';
 import path from 'node:path';
@@ -58,9 +59,9 @@ app.use('/uploads', express.static(uploadsDir, staticOpts));   // kept for older
 
 app.use('/api/auth', authRoutes);
 app.use('/api', publicRoutes);
-app.use('/api/admin/uploads', auth, uploadRoutes);
-app.use('/api/admin/finance', auth, financeRoutes);
-app.use('/api/admin', auth, adminRoutes);
+app.use('/api/admin/uploads', auth, requireArea, uploadRoutes);
+app.use('/api/admin/finance', auth, requireArea, financeRoutes);
+app.use('/api/admin', auth, requireArea, adminRoutes);
 app.use((err, _req, res, _next) => res.status(500).json({ error: err.message }));
 
 const PORT = process.env.PORT || 5000;
