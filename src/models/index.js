@@ -195,7 +195,49 @@ const amenitySchema = new Schema({
 export const Amenity = model('Amenity', amenitySchema);
 export const Format = model('Format', formatSchema);
 export const Brochure = model('Brochure', brochureSchema);
+/**
+ * One income or expense line. The P&L head is what the statement groups on;
+ * anything tagged notInPL (assets, loans, owner transfers) still shows in the
+ * ledger but is kept out of profit.
+ */
+const financeEntrySchema = new Schema({
+  date: { type: Date, required: true, index: true },
+  type: { type: String, enum: ['Income', 'Expense'], required: true, index: true },
+  amount: { type: Number, required: true, min: 0 },
+  currency: { type: String, default: 'INR', uppercase: true, trim: true },
+  // P&L head — drives the statement
+  plHead: {
+    type: String,
+    enum: ['Revenue', 'Other income', 'Direct cost', 'Operating expense', 'Not in P&L'],
+    required: true, index: true,
+  },
+  category: { type: String, default: '', trim: true, index: true },
+  party: { type: String, default: '', trim: true },
+  invoiceNo: { type: String, default: '', trim: true },
+  method: { type: String, default: '', trim: true },     // cash, bank, UPI…
+  notes: { type: String, default: '' },
+  hotelId: { type: Schema.Types.ObjectId, ref: 'Hotel' },
+  vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor' },
+  leadId: { type: Schema.Types.ObjectId, ref: 'Lead' },
+}, { timestamps: true });
+
+financeEntrySchema.index({ date: -1, type: 1 });
+
+/** The shared file library — anything the team keeps asking for. */
+const libraryDocSchema = new Schema({
+  title: { type: String, required: true, trim: true },
+  category: { type: String, default: 'General', trim: true, index: true },
+  fileUrl: { type: String, required: true, trim: true },
+  fileName: { type: String, default: '', trim: true },
+  fileType: { type: String, default: '', trim: true },
+  size: { type: Number, default: 0 },
+  notes: { type: String, default: '' },
+  status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
+}, { timestamps: true });
+
 export const Vendor = model('Vendor', vendorSchema);
+export const LibraryDoc = model('LibraryDoc', libraryDocSchema);
+export const FinanceEntry = model('FinanceEntry', financeEntrySchema);
 export const City = model('City', citySchema);
 export const Location = model('Location', locationSchema);
 export const User = model('User', userSchema);

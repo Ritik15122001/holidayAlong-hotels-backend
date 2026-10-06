@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure, Format, Amenity } from '../models/index.js';
+import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure, Format, Amenity , LibraryDoc} from '../models/index.js';
 import { hashPassword } from '../lib/auth.js';
 
 const r = Router();
@@ -273,6 +273,30 @@ r.delete('/vendors/:id', ok(async (req, res) => {
   const hotels = await Hotel.countDocuments({ vendorId: req.params.id });
   if (hotels) return res.status(400).json({ error: `This vendor still has ${hotels} hotel${hotels > 1 ? 's' : ''} linked. Reassign them first.` });
   await Vendor.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
+}));
+
+// Shared document library
+r.get('/documents', ok(async (req, res) => {
+  const { q, category, status } = req.query;
+  const filter = {};
+  if (category) filter.category = category;
+  if (status) filter.status = status;
+  if (q) {
+    const rx = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = [{ title: rx }, { notes: rx }, { fileName: rx }, { category: rx }];
+  }
+  const [data, counts] = await Promise.all([
+    LibraryDoc.find(filter).sort({ createdAt: -1 }).lean(),
+    LibraryDoc.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }]),
+  ]);
+  res.json({ data, total: data.length, counts: Object.fromEntries(counts.map((c) => [c._id || 'General', c.count])) });
+}));
+r.post('/documents', ok(async (req, res) => res.status(201).json(await LibraryDoc.create(req.body))));
+r.put('/documents/:id', ok(async (req, res) =>
+  res.json(await LibraryDoc.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }))));
+r.delete('/documents/:id', ok(async (req, res) => {
+  await LibraryDoc.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
 }));
 
