@@ -185,20 +185,30 @@ r.delete('/staff/:id', superOnly, ok(async (req, res) => {
 }));
 
 // Dashboard
-r.get('/stats', ok(async (_req, res) => {
+r.get('/stats', ok(async (req, res) => {
   const now = new Date();
-  const [totalHotels, activeHotels, activePrices, newLeads, recentLeads, totalLeads, totalUsers, activeUsers, recentUsers] = await Promise.all([
+  // Customer accounts belong to the Users area, which an Editor cannot reach,
+  // so their details must not leak onto the dashboard either.
+  const seesUsers = req.admin?.role === 'Super Admin';
+
+  const [totalHotels, activeHotels, activePrices, newLeads, recentLeads, totalLeads] = await Promise.all([
     Hotel.countDocuments(),
     Hotel.countDocuments({ status: 'Active' }),
     HotelPrice.countDocuments({ status: 'Active', startDate: { $lte: now }, endDate: { $gte: now } }),
     Lead.countDocuments({ status: 'New' }),
     Lead.find().sort({ createdAt: -1 }).limit(6).lean(),
     Lead.countDocuments(),
+  ]);
+
+  const base = { totalHotels, activeHotels, activePrices, newLeads, totalLeads, recentLeads, seesUsers };
+  if (!seesUsers) return res.json(base);
+
+  const [totalUsers, activeUsers, recentUsers] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ status: 'Active' }),
     User.find().select('-passwordHash').sort({ createdAt: -1 }).limit(5).lean(),
   ]);
-  res.json({ totalHotels, activeHotels, activePrices, newLeads, totalLeads, recentLeads, totalUsers, activeUsers, recentUsers });
+  res.json({ ...base, totalUsers, activeUsers, recentUsers });
 }));
 
 // Hotels
