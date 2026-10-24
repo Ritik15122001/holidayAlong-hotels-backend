@@ -181,6 +181,8 @@ const formatSchema = new Schema({
   title: { type: String, required: true, trim: true },
   group: { type: String, default: 'General', trim: true },
   body: { type: String, required: true },
+  // 'html' once written in the rich editor; older rows stay plain text
+  bodyFormat: { type: String, enum: ['text', 'html'], default: 'text' },
   sortOrder: { type: Number, default: 0 },
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
 }, { timestamps: true });

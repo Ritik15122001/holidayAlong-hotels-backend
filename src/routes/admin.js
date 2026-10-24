@@ -6,6 +6,7 @@ import {
   sessionIsLive, deviceLabel, IDLE_MINUTES,
 } from '../lib/adminAuth.js';
 import crypto from 'node:crypto';
+import { sanitizeHtml } from '../lib/sanitizeHtml.js';
 
 const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
@@ -348,6 +349,20 @@ crud(RoomType, 'room-types');
 crud(MealPlan, 'meal-plans');
 crud(City, 'cities', { sort: { name: 1 } });
 crud(Brochure, 'brochures', { sort: { sortOrder: 1, createdAt: -1 } });
+// Rich text is written by staff but read by every signed-in customer, so the
+// markup is cleaned before it is stored rather than trusted on the way out.
+const cleanFormat = (body) => {
+  if (!body) return body;
+  if (body.bodyFormat === 'html' && typeof body.body === 'string') {
+    return { ...body, body: sanitizeHtml(body.body) };
+  }
+  return body;
+};
+
+r.post('/formats', ok(async (req, res) => res.status(201).json(await Format.create(cleanFormat(req.body)))));
+r.put('/formats/:id', ok(async (req, res) =>
+  res.json(await Format.findByIdAndUpdate(req.params.id, cleanFormat(req.body), { new: true, runValidators: true }))));
+
 crud(Format, 'formats', { sort: { sortOrder: 1, createdAt: 1 } });
 crud(Amenity, 'amenities', { sort: { sortOrder: 1, name: 1 } });
 crud(Location, 'locations', { sort: { name: 1 }, populate: { path: 'cityId', select: 'name state' } });
