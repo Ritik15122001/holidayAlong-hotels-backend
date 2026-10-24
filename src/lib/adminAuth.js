@@ -13,16 +13,48 @@ const TTL_DAYS = 7;
 const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
 const sign = (data) => crypto.createHmac('sha256', SECRET).update(data).digest('base64url');
 
-export function issueAdminToken(user) {
+/**
+ * How long a session may sit untouched before another device may take over.
+ * Without this, closing the browser without signing out would lock the
+ * account until the token expired.
+ */
+export const IDLE_MINUTES = Number(process.env.ADMIN_IDLE_MINUTES || 20);
+
+export function issueAdminToken(user, sessionId) {
   const header = b64({ alg: 'HS256', typ: 'JWT' });
   const payload = b64({
     sub: String(user._id),
     name: user.name,
     username: user.username,
     role: user.role,
+    sid: sessionId,
     exp: Date.now() + TTL_DAYS * 864e5,
   });
   return `${header}.${payload}.${sign(`${header}.${payload}`)}`;
+}
+
+/** Is this account's stored session still live, or has it gone idle? */
+export function sessionIsLive(user) {
+  if (!user?.sessionId) return false;
+  const seen = user.lastSeenAt || user.sessionStartedAt;
+  if (!seen) return false;
+  return Date.now() - new Date(seen).getTime() < IDLE_MINUTES * 60_000;
+}
+
+/** A short, readable note of where a session was opened. */
+export function deviceLabel(userAgent = '') {
+  const ua = String(userAgent);
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari'
+    : /Firefox\//.test(ua) ? 'Firefox' : 'Browser';
+  const os = /iPhone|iPad/.test(ua) ? 'iOS'
+    : /Android/.test(ua) ? 'Android'
+    : /Mac OS X/.test(ua) ? 'Mac'
+    : /Windows/.test(ua) ? 'Windows'
+    : /Linux/.test(ua) ? 'Linux' : '';
+  return [browser, os].filter(Boolean).join(' on ');
 }
 
 export function readAdminToken(token) {
@@ -65,7 +97,7 @@ export const EDITOR_AREAS = new Set([
 export const areasFor = (role) => (role === 'Super Admin' ? null : [...EDITOR_AREAS]);
 
 /** Signing in and reading your own profile are never gated. */
-const ALWAYS = new Set(['login', 'me']);
+const ALWAYS = new Set(['login', 'logout', 'me']);
 
 /**
  * First path segment below /api/admin. Read from the original URL rather than

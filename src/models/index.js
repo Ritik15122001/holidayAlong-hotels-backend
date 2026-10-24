@@ -243,6 +243,12 @@ const adminUserSchema = new Schema({
   role: { type: String, enum: ['Super Admin', 'Editor'], default: 'Editor', index: true },
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active', index: true },
   lastLoginAt: { type: Date },
+  // One session at a time. A token is only accepted while its id still
+  // matches the one stored here, so signing in elsewhere ends the old session.
+  sessionId: { type: String, default: '' },
+  sessionStartedAt: { type: Date },
+  sessionDevice: { type: String, default: '' },
+  lastSeenAt: { type: Date },
 }, { timestamps: true });
 
 export const Vendor = model('Vendor', vendorSchema);

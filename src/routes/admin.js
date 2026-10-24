@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { Hotel, HotelPrice, RoomType, MealPlan, Lead, User, City, Location, Vendor, Brochure, Format, Amenity , LibraryDoc, AdminUser} from '../models/index.js';
 import { hashPassword, verifyPassword } from '../lib/auth.js';
-import { issueAdminToken, readAdminToken, requireArea, EDITOR_AREAS } from '../lib/adminAuth.js';
+import {
+  issueAdminToken, readAdminToken, requireArea, EDITOR_AREAS,
+  sessionIsLive, deviceLabel, IDLE_MINUTES,
+} from '../lib/adminAuth.js';
+import crypto from 'node:crypto';
 
 const r = Router();
 const ok = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
@@ -23,8 +27,27 @@ export function auth(req, res, next) {
 
   const payload = readAdminToken(token);
   if (!payload) return res.status(401).json({ error: 'Unauthorized' });
-  req.admin = payload;
-  next();
+
+  // A staff token is only good while it is still the account's current
+  // session, so signing in elsewhere ends this one.
+  AdminUser.findById(payload.sub).select('sessionId status lastSeenAt').lean()
+    .then((user) => {
+      if (!user || user.status !== 'Active') {
+        return res.status(401).json({ error: 'Your account is no longer active' });
+      }
+      if (!payload.sid || user.sessionId !== payload.sid) {
+        return res.status(401).json({ error: 'Signed out — this account was used on another device' });
+      }
+      req.admin = payload;
+
+      // keep the session warm, but not on every single request
+      const seen = user.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0;
+      if (Date.now() - seen > 60_000) {
+        AdminUser.updateOne({ _id: user._id }, { lastSeenAt: new Date() }).exec();
+      }
+      next();
+    })
+    .catch(() => res.status(500).json({ error: 'Could not verify the session' }));
 }
 
 /** Super Admin only — used by the staff routes. */
@@ -47,11 +70,43 @@ r.post('/login', ok(async (req, res) => {
   if (!staff || staff.status !== 'Active' || !verifyPassword(password || '', staff.passwordHash)) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
-  AdminUser.updateOne({ _id: staff._id }, { lastLoginAt: new Date() }).exec();
+
+  // one device at a time — an active session elsewhere blocks this sign-in
+  if (sessionIsLive(staff) && !req.body?.takeOver) {
+    return res.status(409).json({
+      error: 'This account is already signed in on another device',
+      activeSession: true,
+      device: staff.sessionDevice || 'another device',
+      idleMinutes: IDLE_MINUTES,
+    });
+  }
+
+  const sessionId = crypto.randomUUID();
+  await AdminUser.updateOne({ _id: staff._id }, {
+    lastLoginAt: new Date(),
+    sessionId,
+    sessionStartedAt: new Date(),
+    sessionDevice: deviceLabel(req.get('user-agent')),
+    lastSeenAt: new Date(),
+  });
+
   res.json({
-    token: issueAdminToken(staff),
+    token: issueAdminToken(staff, sessionId),
     user: { username: staff.username, name: staff.name, role: staff.role },
   });
+}));
+
+/** Sign out properly so the seat is free straight away. */
+r.post('/logout', ok(async (req, res) => {
+  if (req.admin?.sub) await AdminUser.updateOne({ _id: req.admin.sub }, { sessionId: '', sessionDevice: '', lastSeenAt: null });
+  res.json({ ok: true });
+}));
+
+/** Super Admin can free a seat when someone is locked out. */
+r.post('/staff/:id/sign-out', ok(async (req, res) => {
+  if (req.admin?.role !== 'Super Admin') return res.status(403).json({ error: 'Super Admin only' });
+  await AdminUser.updateOne({ _id: req.params.id }, { sessionId: '', sessionDevice: '', lastSeenAt: null });
+  res.json({ ok: true });
 }));
 
 /** Who am I, and what may I see — the panel builds its menu from this. */
@@ -91,8 +146,12 @@ r.post('/me/password', ok(async (req, res) => {
 }));
 
 // Staff accounts for the admin panel
-r.get('/staff', superOnly, ok(async (_req, res) =>
-  res.json(await AdminUser.find().select('-passwordHash').sort('name').lean())));
+r.get('/staff', superOnly, ok(async (_req, res) => {
+  // the session id itself never leaves the server; the device and last-seen
+  // time are enough for the panel to show who is signed in where
+  const rows = await AdminUser.find().select('-passwordHash -sessionId').sort('name').lean();
+  res.json(rows.map((u) => ({ ...u, signedIn: sessionIsLive(u) })));
+}));
 
 r.post('/staff', superOnly, ok(async (req, res) => {
   const { name, username, password, role, status } = req.body || {};
