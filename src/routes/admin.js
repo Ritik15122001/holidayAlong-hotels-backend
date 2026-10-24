@@ -62,6 +62,34 @@ r.get('/me', (req, res) => res.json({
   areas: req.admin?.role === 'Super Admin' ? null : [...EDITOR_AREAS],
 }));
 
+/**
+ * Change your own password. Any signed-in staff account may do this for
+ * itself, which is why it sits under /me rather than the Super Admin routes.
+ */
+r.post('/me/password', ok(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Enter your current and new password' });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  if (currentPassword === newPassword) return res.status(400).json({ error: 'The new password matches the current one' });
+
+  // the environment account has no database row, so there is nothing to update
+  if (!req.admin?.sub) {
+    return res.status(400).json({
+      error: 'This login comes from the server configuration. Change ADMIN_PASS in the server .env and restart, or create a staff account for day-to-day use.',
+    });
+  }
+
+  const me = await AdminUser.findById(req.admin.sub);
+  if (!me) return res.status(404).json({ error: 'Account not found' });
+  if (!verifyPassword(String(currentPassword), me.passwordHash)) {
+    return res.status(400).json({ error: 'Your current password is not correct' });
+  }
+
+  me.passwordHash = hashPassword(String(newPassword));
+  await me.save();
+  res.json({ ok: true });
+}));
+
 // Staff accounts for the admin panel
 r.get('/staff', superOnly, ok(async (_req, res) =>
   res.json(await AdminUser.find().select('-passwordHash').sort('name').lean())));
