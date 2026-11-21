@@ -7,10 +7,20 @@ import { fileURLToPath } from 'node:url';
 
 // Must resolve to exactly what index.js serves, or files are written to one
 // place and looked for in another. UPLOAD_DIR moves both together.
-const DIR = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', 'uploads');
-fs.mkdirSync(DIR, { recursive: true });
+//
+// Resolved lazily (not at import time): this module is imported before
+// index.js calls dotenv.config(), so reading process.env.UPLOAD_DIR here at
+// the top level would always see it as unset and silently fall back to the
+// in-repo path.
+let cachedDir;
+const getDir = () => {
+  if (cachedDir) return cachedDir;
+  cachedDir = process.env.UPLOAD_DIR
+    ? path.resolve(process.env.UPLOAD_DIR)
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', 'uploads');
+  fs.mkdirSync(cachedDir, { recursive: true });
+  return cachedDir;
+};
 
 const IMAGES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
 const DOCS = new Set([
@@ -21,7 +31,7 @@ const DOCS = new Set([
 const ALLOWED = new Set([...IMAGES, ...DOCS]);
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, DIR),
+  destination: (_req, _file, cb) => cb(null, getDir()),
   filename: (_req, file, cb) => {
     const ext = (path.extname(file.originalname) || '.jpg').toLowerCase().slice(0, 8);
     cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
@@ -53,9 +63,10 @@ r.post('/', (req, res) => {
 });
 
 r.delete('/:name', (req, res) => {
+  const dir = getDir();
   const name = path.basename(req.params.name);
-  const file = path.join(DIR, name);
-  if (!file.startsWith(DIR)) return res.status(400).json({ error: 'Bad path' });
+  const file = path.join(dir, name);
+  if (!file.startsWith(dir)) return res.status(400).json({ error: 'Bad path' });
   fs.promises.unlink(file).catch(() => {});
   res.json({ ok: true });
 });
