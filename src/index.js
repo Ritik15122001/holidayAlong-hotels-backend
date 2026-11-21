@@ -44,7 +44,12 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // Uploaded images are served straight off disk.
 // Served under /api so it rides the same proxy rule as the rest of the API —
 // a bare /uploads path is handled by the frontend host and never reaches us.
-const uploadsDir = path.join(ROOT, 'uploads');
+// UPLOAD_DIR lets the files live outside the repo. They have to: the folder is
+// gitignored, so a deploy that cleans untracked files takes every upload with
+// it. Point this at something like /var/lib/holidayalong/uploads in production.
+const uploadsDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(ROOT, 'uploads');
 const staticOpts = {
   maxAge: '30d',
   setHeaders: (res, filePath) => {
@@ -66,5 +71,8 @@ app.use((err, _req, res, _next) => res.status(500).json({ error: err.message }))
 
 const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`)))
+  .then(() => app.listen(PORT, () => {
+    console.log(`API on http://localhost:${PORT}`);
+    console.log(`Uploads served from ${uploadsDir}`);
+  }))
   .catch((e) => { console.error('Mongo error', e.message); process.exit(1); });

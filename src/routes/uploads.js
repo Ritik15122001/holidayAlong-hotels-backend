@@ -5,8 +5,11 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-// Same root as index.js, so uploads land next to package.json regardless of cwd.
-const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', 'uploads');
+// Must resolve to exactly what index.js serves, or files are written to one
+// place and looked for in another. UPLOAD_DIR moves both together.
+const DIR = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..', 'uploads');
 fs.mkdirSync(DIR, { recursive: true });
 
 const IMAGES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
